@@ -51,6 +51,7 @@ class MarketConfig:
     congestion_power: float = 4.0
     # Noise
     day_noise_sd: float = 0.10       # region-day demand shocks
+    dasher_response: float = 0.0     # carryover: how strongly Dashers react to last period's busyness
     seed: int | None = None
 
     @property
@@ -148,6 +149,7 @@ def simulate(world: World, treat_share: np.ndarray, rng: np.random.Generator | N
     out = {k: np.zeros((T, R)) for k in
            ["sessions_t", "sessions_c", "orders_t", "orders_c", "eta", "util", "backlog"]}
     backlog = np.zeros(R)
+    prev_util = np.full(R, 0.8)
 
     for t in range(T):
         n = world.sessions[t].astype(float)
@@ -157,7 +159,9 @@ def simulate(world: World, treat_share: np.ndarray, rng: np.random.Generator | N
         else:
             n_t = n * share
         n_c = n - n_t
-        capacity = np.maximum(world.dashers[t] * cfg.deliveries_per_dasher, 0.5)
+        # Busy periods attract extra Dashers in the next period (and quiet ones drive them off).
+        supply_boost = np.clip(1 + cfg.dasher_response * (prev_util - 0.8), 0.5, 2.0)
+        capacity = np.maximum(world.dashers[t] * supply_boost * cfg.deliveries_per_dasher, 0.5)
 
         def conv(fee, eta):
             return _sigmoid(world.region_alpha + sel - cfg.fee_sensitivity * fee
@@ -193,6 +197,7 @@ def simulate(world: World, treat_share: np.ndarray, rng: np.random.Generator | N
         out["sessions_t"][t], out["sessions_c"][t] = n_t, n_c
         out["orders_t"][t], out["orders_c"][t] = o_t, o_c
         out["eta"][t], out["util"][t], out["backlog"][t] = eta, util, backlog
+        prev_util = util
 
     out["revenue_t"] = out["orders_t"] * (cfg.treatment_fee + cfg.take_rate * cfg.basket_size)
     out["revenue_c"] = out["orders_c"] * (cfg.control_fee + cfg.take_rate * cfg.basket_size)

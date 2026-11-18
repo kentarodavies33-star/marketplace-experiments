@@ -13,3 +13,4 @@ venv/
 Thumbs.db
 
 # results/ is committed on purpose so the figures show up on GitHub.
+Claude outputs/

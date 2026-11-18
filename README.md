@@ -1,6 +1,6 @@
 # Why Naive A/B Tests Break in Delivery Marketplaces
 
-**Authors:** BKIM · KD
+**Authors:** Brandon Kim, Kentaro Davies
 
 > A standard A/B test of a $1 delivery-fee cut says it lifts orders by **+25%** and revenue by **+11%**: ship it.
 > If you actually roll it out to everyone, orders rise only **+8%** and revenue **falls 5%**.
@@ -74,6 +74,35 @@ naive test of a fee change can be from reality.
 _Caveat: this is a simulation with made-up parameters, not DoorDash data. It shows how big the
 bias **can** be and why the design matters. It doesn't claim anything about DoorDash's actual fees._
 
+## Extension: Burn-in periods
+
+![Burn-in trade-off](results/figures/5_burn_in_tradeoff.png)
+
+**What is carryover?** A switchback assumes each block is only affected by its own treatment. That breaks
+if one block's treatment spills into the next. To test this, we added Dashers who react to how busy the last
+30 minutes were (`dasher_response` in `MarketConfig`). A fee-cut block is busier, so it pulls extra Dashers
+into the following block. If that next block is control, it gets faster deliveries than it would on its own,
+which makes control look better and shrinks the measured effect. A "burn-in" drops the first period(s) of
+each block from the analysis, so the comparison only uses periods after the market has adjusted to the new
+treatment. We tested dropping 0, 30 and 60 minutes from 2-hour blocks, over 20 simulated markets each.
+
+**Without carryover:** in the original model, the bias was close to zero at every burn-in length. Dropping
+periods only threw away data: the standard error rose from 1.20 to 1.34 pp at 30 minutes and to 1.57 pp at
+60 minutes. With no carryover, burn-in has no benefit and costs precision.
+
+**With Dashers reacting to busyness:** without burn-in, the switchback underestimated the lift by about
+0.9 pp, and the 95% interval for that bias excluded zero, so the bias is real and not noise. Dropping the
+first 30 minutes of each block removed it (about +0.2 pp, statistically indistinguishable from zero), while
+the standard error rose about 13%, from 1.10 to 1.25 pp. Dropping a full hour didn't reduce bias any further
+and pushed the standard error up to 1.47 pp.
+
+**Recommendation:** use a short burn-in, about as long as it takes the market to adjust (here one 30-minute
+period), when there's a plausible carryover mechanism: Dashers repositioning, order backlogs, or batched
+deliveries. Don't use a longer burn-in, because it only adds noise. Carryover isn't known in advance, so we
+suggest first running without burn-in and comparing the treatment effect in each block's first period with
+its later periods. If the effect is clearly different at the start, that's a sign of carryover, and a burn-in
+is worth its cost in precision.
+
 ## How to run
 
 ```bash
@@ -116,3 +145,4 @@ marketplace-experiments/
 - DoorDash Engineering, *Balancing Network Effects, Learning Effects, and Power in Experiments* (2022). https://careersatdoordash.com/?p=6696
 - DoorDash Engineering, CUPAC: variance reduction using ML predictions as covariates. https://careersatdoordash.com/?p=1650
 - Deng, Xu, Kohavi & Walker, *Improving the Sensitivity of Online Controlled Experiments by Utilizing Pre-Experiment Data* (CUPED), WSDM 2013.
+Add burn-in study with Dasher carryover
